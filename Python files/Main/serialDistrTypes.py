@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.special import gamma
 
+
 def serialDistrTypes(tmax, distvals):
     '''
 
@@ -17,13 +18,17 @@ def serialDistrTypes(tmax, distvals):
         # Gamma distribution with integer shape (Erlang)
         pdistr = lambda p: gammaDistr(p, np.arange(1, tmax+1), distvals['pm'])
     else:
-        raise ValueError('Not yet implemented')
+        raise ValueError('No valid distribution specified')
 
     return pdistr
 
+
 def gammaDistr(p, x, shapePm):
+    # Gamma distribution, p is 1/mean, shape param preset
+    # Scale parameter based on mean = shapePm*scalePm
     scalePm = 1/(p*shapePm)
     ratePm = 1/scalePm
+    # Gamma (Erlang) probabilities
     pr = -np.log(gamma(shapePm)) + shapePm*np.log(ratePm) \
          + (shapePm-1)*np.log(x) - ratePm*x
     pr = np.exp(pr)
