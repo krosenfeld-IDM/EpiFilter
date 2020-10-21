@@ -20,12 +20,14 @@ sys.path.append('Main')
 from serialDistrTypes import serialDistrTypes
 from runEpiFilterSm import runEpiFilterSm
 from recursPredict import recursPredict
+from runEpiSmoother import runEpiSmoother
+
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 # Directory and if saving
 thisDir = os.path.dirname(__file__)
 saveTrue = 1
-pickleTrue = 0
+pickleTrue = 1
 
 # Folder for saving and loading
 saveFol = os.path.join('Results', 'COVID')
@@ -111,7 +113,7 @@ Rgrid = np.linspace(Rmin, Rmax, m)
 Rmed, Rlow, Rhigh, Rmean, pR, pRup, pstate = runEpiFilterSm(Rgrid, m, eta, nday, p0, Lam, Iday);
 
 # EpiFilter one-step-ahead prediction (takes time so pickle the results)
-if True:
+if False:
     predF, predIntF = recursPredict(Rgrid, pR, Lam, Rmean, progress=True)
     if pickleTrue:
         pickle.dump({'predF': predF, 'predIntF': predIntF}, open(namstr+'_recursPredict.pkl', 'wb'))
@@ -122,7 +124,7 @@ else:
     predIntF = tmp['predIntF']
 
 # For probabilities above or below 1
-id1 = np.argwhere(Rgrid <= 1)[0][-1]
+id1 = np.argwhere(Rgrid <= 1)[-1][0]
 prL1 = np.zeros(nday)
 # Update prior to posterior sequentially
 for i in range(1, nday):
@@ -131,25 +133,52 @@ for i in range(1, nday):
     prL1[i] = Rcdf[id1]
 
 ## Recursive smoother and predictions
-## TBD
+# EpiSmoother estimates for single trajectory
+[RmedS, RlowS, RhighS, RmeanS, qR] = runEpiSmoother(Rgrid, m, nday, pR, pRup, pstate)
+
+# EpiSmoother one-step-ahead predictions
+if False:
+    predS, predIntS = recursPredict(Rgrid, qR, Lam, RmeanS, progress=True);
+    if pickleTrue:
+        pickle.dump({'predS': predS, 'predIntS': predIntS}, open(namstr+'S_recursPredict.pkl', 'wb'))
+else:
+    warnings.warn('Loading pickled S_recursPredict results')
+    tmp = pickle.load(open(namstr+'S_recursPredict.pkl', 'rb'))
+    predS = tmp['predS']
+    predIntS = tmp['predIntS']
+
+# For probabilities above or below 1
+id1 = np.argwhere(Rgrid <= 1)[-1][0]
+prL1S = np.zeros(nday)
+# Update prior to posterior sequentially
+for i in range(1, nday):
+    # Posterior CDF and prob R <= 1
+    Rcdf = np.cumsum(pR[i, :])
+    prL1S[i] = Rcdf[id1]
 
 ## Figure
-fig, axes = plt.subplots(2, 1, figsize=(8, 14))
+fig, axes = plt.subplots(2, 1, figsize=(8, 8))
 # top figure
 ax = axes[0]
-ax.fill_between(xval, Rlow, Rhigh, color=3*[0.94])
-ax.plot(xval, Rmean)
+ax.fill_between(xval, Rlow, Rhigh, color=colors[0], alpha=0.3)
+ax.plot(xval, Rmean, color=colors[0])
+ax.fill_between(xval, RlowS, RhighS, color=colors[1], alpha=0.3)
+ax.plot(xval, RmeanS, color=colors[1])
 ax.set_ylim([0, 5])
 ylim = ax.get_ylim()
+xlim = ax.get_xlim()
+ax.hlines(1.0, xlim[0], xlim[1], colors='k', linestyles='--')
 ax.vlines([xval[idLock], xval[idRelax]], ylim[0], ylim[1], color=3*[0.6], linestyles='--')
 ax.set_ylabel('$\hat{{R}}_s$, \, $\\tilde{{R}}_s$')
+ax.set_xlim(xlim)
 # bottom figure
 ax = axes[1]
 ax.scatter(xval[1:], Iday[1:], s=40, c=[3*[0.7]], alpha=0.9, edgecolors='none')
-ax.fill_between(xval[1:], predIntF[:, 0], predIntF[:, 1], color=colors[0], alpha=0.3)
-ax.plot(xval[1:], predF, color=colors[0])
+# ax.fill_between(xval[1:], predIntF[:, 0], predIntF[:, 1], color=colors[0], alpha=0.3)
+# ax.plot(xval[1:], predF, color=colors[0])
+ax.fill_between(xval[1:], predIntS[:, 0], predIntS[:, 1], color=colors[1], alpha=0.3)
+ax.plot(xval[1:], predS, color=colors[1])
 ax.set_ylabel(f'$\hat{{I}}_s | \eta = ${eta}')
 ax.set_xlabel('Days')
 ax.set_ylim(0, None)
-
-plt.show()
+plt.savefig(os.path.join(saveFol, f'RIsmoothfil_{namstr}.png'))
